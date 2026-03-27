@@ -810,8 +810,10 @@ def x_follow_user(ctx: Context, username: str) -> dict:
         if not xctx.authenticated_user_id:
             return {"error": "Could not determine authenticated user ID."}
 
-        # Resolve username to ID
-        user_resp = client.get_user(username=username, user_fields=["id"])
+        # Resolve username to ID using read fallback (OAuth 1.0a can't lookup)
+        user_resp = _read_with_fallback(
+            xctx, lambda c: c.get_user(username=username, user_fields=["id"])
+        )
         if not user_resp or not user_resp.data:
             return {"error": f"User @{username} not found."}
 
@@ -838,7 +840,10 @@ def x_unfollow_user(ctx: Context, username: str) -> dict:
         if not xctx.authenticated_user_id:
             return {"error": "Could not determine authenticated user ID."}
 
-        user_resp = client.get_user(username=username, user_fields=["id"])
+        # Resolve username to ID using read fallback (OAuth 1.0a can't lookup)
+        user_resp = _read_with_fallback(
+            xctx, lambda c: c.get_user(username=username, user_fields=["id"])
+        )
         if not user_resp or not user_resp.data:
             return {"error": f"User @{username} not found."}
 
