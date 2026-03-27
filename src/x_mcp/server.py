@@ -197,11 +197,46 @@ def _get_ctx(ctx: Context) -> XContext:
 
 
 def _read_client(xctx: XContext) -> tweepy.Client:
-    """Return the best available client for read operations."""
-    client = xctx.user_client or xctx.app_client
+    """Return the best available client for read operations.
+
+    Prefers the app client (Bearer token) for reads because some
+    endpoints like search require it on the Free tier.
+    Falls back to user client if Bearer token is not available.
+    """
+    client = xctx.app_client or xctx.user_client
     if not client:
         raise RuntimeError("No X API client available for reading.")
     return client
+
+
+def _read_with_fallback(xctx: XContext, operation):
+    """Run a read operation, falling back between app and user clients.
+
+    On the Free tier some endpoints only work with Bearer (app) and
+    others only with OAuth 1.0a (user).  This helper tries the primary
+    client first and retries with the other on 401/403.
+
+    Args:
+        xctx: The X context with both clients.
+        operation: A callable that takes a ``tweepy.Client`` and returns
+                   the API response.
+    """
+    clients: list[tweepy.Client] = []
+    if xctx.app_client:
+        clients.append(xctx.app_client)
+    if xctx.user_client and xctx.user_client is not xctx.app_client:
+        clients.append(xctx.user_client)
+    if not clients:
+        raise RuntimeError("No X API client available for reading.")
+
+    last_err: Exception | None = None
+    for client in clients:
+        try:
+            return operation(client)
+        except (tweepy.errors.Unauthorized, tweepy.errors.Forbidden) as e:
+            last_err = e
+            continue
+    raise last_err  # type: ignore[misc]
 
 
 def _write_client(xctx: XContext) -> tweepy.Client:
@@ -294,8 +329,7 @@ def x_get_me(ctx: Context) -> dict:
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
-        resp = client.get_me(user_fields=_USER_FIELDS)
+        resp = _read_with_fallback(xctx, lambda c: c.get_me(user_fields=_USER_FIELDS))
         if not resp or not resp.data:
             return {"error": "Could not retrieve authenticated user."}
         return _user_to_dict(resp.data)
@@ -314,8 +348,9 @@ def x_get_user(ctx: Context, username: str) -> dict:
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
-        resp = client.get_user(username=username, user_fields=_USER_FIELDS)
+        resp = _read_with_fallback(
+            xctx, lambda c: c.get_user(username=username, user_fields=_USER_FIELDS)
+        )
         if not resp or not resp.data:
             return {"error": f"User @{username} not found."}
         return _user_to_dict(resp.data)
@@ -334,8 +369,9 @@ def x_get_user_by_id(ctx: Context, user_id: str) -> dict:
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
-        resp = client.get_user(id=user_id, user_fields=_USER_FIELDS)
+        resp = _read_with_fallback(
+            xctx, lambda c: c.get_user(id=user_id, user_fields=_USER_FIELDS)
+        )
         if not resp or not resp.data:
             return {"error": f"User ID {user_id} not found."}
         return _user_to_dict(resp.data)
@@ -354,12 +390,14 @@ def x_get_tweet(ctx: Context, tweet_id: str) -> dict:
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
-        resp = client.get_tweet(
-            tweet_id,
-            tweet_fields=_TWEET_FIELDS,
-            user_fields=_USER_FIELDS,
-            expansions=_EXPANSIONS,
+        resp = _read_with_fallback(
+            xctx,
+            lambda c: c.get_tweet(
+                tweet_id,
+                tweet_fields=_TWEET_FIELDS,
+                user_fields=_USER_FIELDS,
+                expansions=_EXPANSIONS,
+            ),
         )
         if not resp or not resp.data:
             return {"error": f"Tweet {tweet_id} not found."}
@@ -390,26 +428,26 @@ def x_get_user_tweets(
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
         max_results = max(5, min(100, max_results))
 
-        # Resolve username to ID
-        user_resp = client.get_user(username=username, user_fields=["id"])
-        if not user_resp or not user_resp.data:
+        def _op(client):
+            user_resp = client.get_user(username=username, user_fields=["id"])
+            if not user_resp or not user_resp.data:
+                return None
+            kwargs: dict = {
+                "id": user_resp.data.id,
+                "tweet_fields": _TWEET_FIELDS,
+                "user_fields": _USER_FIELDS,
+                "expansions": _EXPANSIONS,
+                "max_results": max_results,
+            }
+            if pagination_token:
+                kwargs["pagination_token"] = pagination_token
+            return client.get_users_tweets(**kwargs)
+
+        resp = _read_with_fallback(xctx, _op)
+        if resp is None:
             return {"error": f"User @{username} not found."}
-        user_id = user_resp.data.id
-
-        kwargs: dict = {
-            "id": user_id,
-            "tweet_fields": _TWEET_FIELDS,
-            "user_fields": _USER_FIELDS,
-            "expansions": _EXPANSIONS,
-            "max_results": max_results,
-        }
-        if pagination_token:
-            kwargs["pagination_token"] = pagination_token
-
-        resp = client.get_users_tweets(**kwargs)
         tweets = [_tweet_to_dict(t) for t in (resp.data or [])]
         users = _includes_users(resp)
         for t in tweets:
@@ -442,25 +480,26 @@ def x_get_user_mentions(
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
         max_results = max(5, min(100, max_results))
 
-        user_resp = client.get_user(username=username, user_fields=["id"])
-        if not user_resp or not user_resp.data:
+        def _op(client):
+            user_resp = client.get_user(username=username, user_fields=["id"])
+            if not user_resp or not user_resp.data:
+                return None
+            kwargs: dict = {
+                "id": user_resp.data.id,
+                "tweet_fields": _TWEET_FIELDS,
+                "user_fields": _USER_FIELDS,
+                "expansions": _EXPANSIONS,
+                "max_results": max_results,
+            }
+            if pagination_token:
+                kwargs["pagination_token"] = pagination_token
+            return client.get_users_mentions(**kwargs)
+
+        resp = _read_with_fallback(xctx, _op)
+        if resp is None:
             return {"error": f"User @{username} not found."}
-        user_id = user_resp.data.id
-
-        kwargs: dict = {
-            "id": user_id,
-            "tweet_fields": _TWEET_FIELDS,
-            "user_fields": _USER_FIELDS,
-            "expansions": _EXPANSIONS,
-            "max_results": max_results,
-        }
-        if pagination_token:
-            kwargs["pagination_token"] = pagination_token
-
-        resp = client.get_users_mentions(**kwargs)
         tweets = [_tweet_to_dict(t) for t in (resp.data or [])]
         users = _includes_users(resp)
         for t in tweets:
@@ -498,22 +537,23 @@ def x_search_tweets(
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
         max_results = max(10, min(100, max_results))
 
-        kwargs: dict = {
-            "query": query,
-            "tweet_fields": _TWEET_FIELDS,
-            "user_fields": _USER_FIELDS,
-            "expansions": _EXPANSIONS,
-            "max_results": max_results,
-        }
-        if sort_order and sort_order in ("recency", "relevancy"):
-            kwargs["sort_order"] = sort_order
-        if next_token:
-            kwargs["next_token"] = next_token
+        def _op(client):
+            kwargs: dict = {
+                "query": query,
+                "tweet_fields": _TWEET_FIELDS,
+                "user_fields": _USER_FIELDS,
+                "expansions": _EXPANSIONS,
+                "max_results": max_results,
+            }
+            if sort_order and sort_order in ("recency", "relevancy"):
+                kwargs["sort_order"] = sort_order
+            if next_token:
+                kwargs["next_token"] = next_token
+            return client.search_recent_tweets(**kwargs)
 
-        resp = client.search_recent_tweets(**kwargs)
+        resp = _read_with_fallback(xctx, _op)
         tweets = [_tweet_to_dict(t) for t in (resp.data or [])]
         users = _includes_users(resp)
         for t in tweets:
@@ -823,22 +863,24 @@ def x_get_followers(
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
         max_results = max(1, min(1000, max_results))
 
-        user_resp = client.get_user(username=username, user_fields=["id"])
-        if not user_resp or not user_resp.data:
+        def _op(client):
+            user_resp = client.get_user(username=username, user_fields=["id"])
+            if not user_resp or not user_resp.data:
+                return None
+            kwargs: dict = {
+                "id": user_resp.data.id,
+                "user_fields": _USER_FIELDS,
+                "max_results": max_results,
+            }
+            if pagination_token:
+                kwargs["pagination_token"] = pagination_token
+            return client.get_users_followers(**kwargs)
+
+        resp = _read_with_fallback(xctx, _op)
+        if resp is None:
             return {"error": f"User @{username} not found."}
-
-        kwargs: dict = {
-            "id": user_resp.data.id,
-            "user_fields": _USER_FIELDS,
-            "max_results": max_results,
-        }
-        if pagination_token:
-            kwargs["pagination_token"] = pagination_token
-
-        resp = client.get_users_followers(**kwargs)
         followers = [_user_to_dict(u) for u in (resp.data or [])]
 
         result: dict = {"followers": followers, "count": len(followers)}
@@ -867,22 +909,24 @@ def x_get_following(
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
         max_results = max(1, min(1000, max_results))
 
-        user_resp = client.get_user(username=username, user_fields=["id"])
-        if not user_resp or not user_resp.data:
+        def _op(client):
+            user_resp = client.get_user(username=username, user_fields=["id"])
+            if not user_resp or not user_resp.data:
+                return None
+            kwargs: dict = {
+                "id": user_resp.data.id,
+                "user_fields": _USER_FIELDS,
+                "max_results": max_results,
+            }
+            if pagination_token:
+                kwargs["pagination_token"] = pagination_token
+            return client.get_users_following(**kwargs)
+
+        resp = _read_with_fallback(xctx, _op)
+        if resp is None:
             return {"error": f"User @{username} not found."}
-
-        kwargs: dict = {
-            "id": user_resp.data.id,
-            "user_fields": _USER_FIELDS,
-            "max_results": max_results,
-        }
-        if pagination_token:
-            kwargs["pagination_token"] = pagination_token
-
-        resp = client.get_users_following(**kwargs)
         following = [_user_to_dict(u) for u in (resp.data or [])]
 
         result: dict = {"following": following, "count": len(following)}
@@ -1037,30 +1081,33 @@ def x_get_liked_tweets(
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
         max_results = max(5, min(100, max_results))
 
-        if username:
-            user_resp = client.get_user(username=username, user_fields=["id"])
-            if not user_resp or not user_resp.data:
-                return {"error": f"User @{username} not found."}
-            user_id = user_resp.data.id
-        elif xctx.authenticated_user_id:
-            user_id = xctx.authenticated_user_id
-        else:
+        if not username and not xctx.authenticated_user_id:
             return {"error": "Specify a username or authenticate with OAuth 1.0a."}
 
-        kwargs: dict = {
-            "id": user_id,
-            "tweet_fields": _TWEET_FIELDS,
-            "user_fields": _USER_FIELDS,
-            "expansions": _EXPANSIONS,
-            "max_results": max_results,
-        }
-        if pagination_token:
-            kwargs["pagination_token"] = pagination_token
+        def _op(client):
+            if username:
+                user_resp = client.get_user(username=username, user_fields=["id"])
+                if not user_resp or not user_resp.data:
+                    return None
+                uid = user_resp.data.id
+            else:
+                uid = xctx.authenticated_user_id
+            kwargs: dict = {
+                "id": uid,
+                "tweet_fields": _TWEET_FIELDS,
+                "user_fields": _USER_FIELDS,
+                "expansions": _EXPANSIONS,
+                "max_results": max_results,
+            }
+            if pagination_token:
+                kwargs["pagination_token"] = pagination_token
+            return client.get_liked_tweets(**kwargs)
 
-        resp = client.get_liked_tweets(**kwargs)
+        resp = _read_with_fallback(xctx, _op)
+        if resp is None:
+            return {"error": f"User @{username} not found."}
         tweets = [_tweet_to_dict(t) for t in (resp.data or [])]
         users = _includes_users(resp)
         for t in tweets:
@@ -1201,20 +1248,21 @@ def x_get_list_tweets(
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
         max_results = max(1, min(100, max_results))
 
-        kwargs: dict = {
-            "id": list_id,
-            "tweet_fields": _TWEET_FIELDS,
-            "user_fields": _USER_FIELDS,
-            "expansions": _EXPANSIONS,
-            "max_results": max_results,
-        }
-        if pagination_token:
-            kwargs["pagination_token"] = pagination_token
+        def _op(client):
+            kwargs: dict = {
+                "id": list_id,
+                "tweet_fields": _TWEET_FIELDS,
+                "user_fields": _USER_FIELDS,
+                "expansions": _EXPANSIONS,
+                "max_results": max_results,
+            }
+            if pagination_token:
+                kwargs["pagination_token"] = pagination_token
+            return client.get_list_tweets(**kwargs)
 
-        resp = client.get_list_tweets(**kwargs)
+        resp = _read_with_fallback(xctx, _op)
         tweets = [_tweet_to_dict(t) for t in (resp.data or [])]
         users = _includes_users(resp)
         for t in tweets:
@@ -1241,30 +1289,34 @@ def x_get_owned_lists(ctx: Context, username: str | None = None) -> dict:
     """
     try:
         xctx = _get_ctx(ctx)
-        client = _read_client(xctx)
 
-        if username:
-            user_resp = client.get_user(username=username, user_fields=["id"])
-            if not user_resp or not user_resp.data:
-                return {"error": f"User @{username} not found."}
-            user_id = user_resp.data.id
-        elif xctx.authenticated_user_id:
-            user_id = xctx.authenticated_user_id
-        else:
+        if not username and not xctx.authenticated_user_id:
             return {"error": "Specify a username or authenticate with OAuth 1.0a."}
 
-        resp = client.get_owned_lists(
-            id=user_id,
-            list_fields=[
-                "id",
-                "name",
-                "description",
-                "member_count",
-                "follower_count",
-                "created_at",
-                "owner_id",
-            ],
-        )
+        def _op(client):
+            if username:
+                user_resp = client.get_user(username=username, user_fields=["id"])
+                if not user_resp or not user_resp.data:
+                    return None
+                uid = user_resp.data.id
+            else:
+                uid = xctx.authenticated_user_id
+            return client.get_owned_lists(
+                id=uid,
+                list_fields=[
+                    "id",
+                    "name",
+                    "description",
+                    "member_count",
+                    "follower_count",
+                    "created_at",
+                    "owner_id",
+                ],
+            )
+
+        resp = _read_with_fallback(xctx, _op)
+        if resp is None:
+            return {"error": f"User @{username} not found."}
         lists = []
         for lst in resp.data or []:
             lists.append(

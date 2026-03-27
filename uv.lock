@@ -899,8 +899,8 @@ wheels = [
 ]
 
 [[package]]
-name = "x-mcp"
-version = "0.1.0"
+name = "x-mcp-server"
+version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
