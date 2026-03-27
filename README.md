@@ -1,12 +1,12 @@
 <div align="center">
-  <b>x-mcp</b>
+  <b>mcp-x</b>
 
   <p align="center">
     <i>Your AI Assistant's Gateway to X (Twitter)!</i>
   </p>
 
-[![PyPI - Version](https://img.shields.io/pypi/v/x-mcp)](https://pypi.org/project/x-mcp/)
-[![PyPI Downloads](https://static.pepy.tech/badge/x-mcp)](https://pepy.tech/projects/x-mcp)
+[![PyPI - Version](https://img.shields.io/pypi/v/mcp-x)](https://pypi.org/project/mcp-x/)
+[![PyPI Downloads](https://static.pepy.tech/badge/mcp-x)](https://pepy.tech/projects/mcp-x)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 </div>
 
@@ -14,14 +14,14 @@
 
 ## What is this?
 
-`x-mcp` is a Python-based MCP server that connects any MCP-compatible client (Claude Desktop, Cursor, Windsurf) to the X (Twitter) API v2. It lets you post tweets, search, like, retweet, follow users, send DMs, manage bookmarks, and more — all driven by AI through natural language.
+`mcp-x` is a Python-based MCP server that connects any MCP-compatible client (Claude Desktop, Cursor, Windsurf) to the X (Twitter) API v2. It lets you post tweets, search, like, retweet, follow users, send DMs, manage bookmarks, and more — all driven by AI through natural language.
 
 ---
 
 ## Quick Start
 
 ```bash
-uvx x-mcp@latest
+uvx mcp-x@latest
 ```
 
 1. **Get X API credentials** from the [X Developer Portal](https://developer.x.com/)
@@ -35,11 +35,11 @@ uvx x-mcp@latest
 3. **Set up your `.env`** or environment variables (see [Authentication](#authentication))
 4. **Check auth:**
    ```bash
-   uvx x-mcp@latest auth
+   uvx mcp-x@latest auth
    ```
 5. **Run the server:**
    ```bash
-   uvx x-mcp@latest
+   uvx mcp-x@latest
    ```
 
 ---
@@ -93,7 +93,7 @@ If you have all 5, the Bearer token is used for reads and OAuth 1.0a for writes.
 Verify your credentials are working:
 
 ```bash
-uvx x-mcp@latest auth
+uvx mcp-x@latest auth
 ```
 
 Output:
@@ -183,7 +183,7 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "x": {
       "command": "uvx",
-      "args": ["x-mcp@latest"],
+      "args": ["mcp-x@latest"],
       "env": {
         "BEARER_TOKEN": "your-bearer-token",
         "CONSUMER_KEY": "your-consumer-key",
@@ -226,7 +226,7 @@ macOS note: If you get `spawn uvx ENOENT`, use the full path:
   "mcpServers": {
     "x": {
       "command": "uvx",
-      "args": ["x-mcp@latest"],
+      "args": ["mcp-x@latest"],
       "env": {
         "BEARER_TOKEN": "your-bearer-token",
         "CONSUMER_KEY": "your-consumer-key",
