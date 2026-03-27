@@ -1,6 +1,6 @@
 [project]
 name = "x-mcp-server"
-version = "1.5.0"
+version = "1.6.0"
 description = "MCP server for X (Twitter) API — post, search, like, retweet, follow, and read tweets"
 readme = "README.md"
 authors = [
