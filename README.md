@@ -14,7 +14,7 @@
 
 ## What is this?
 
-`x-mcp-server` is a Python-based MCP server that connects any MCP-compatible client (Claude Desktop, Cursor, Windsurf) to the X (Twitter) API v2. It lets you post tweets, search, like, retweet, follow users, send DMs, manage bookmarks, and more — all driven by AI through natural language.
+`x-mcp-server` is a Python-based MCP server that connects any MCP-compatible client (Claude Desktop, Cursor, Windsurf) to the X (Twitter) API v2. It lets you post tweets, search, like, retweet, follow users, send DMs, and more — all driven by AI through natural language.
 
 ---
 
@@ -46,7 +46,7 @@ uvx x-mcp-server@latest
 
 ## Key Features
 
-- **27 Tools** covering tweets, search, users, DMs, bookmarks, lists, and threads
+- **24 Tools** covering tweets, search, users, DMs, lists, and threads
 - **Dual Authentication:** Bearer token (read-only) + OAuth 1.0a (full read-write)
 - **Pagination:** All list operations support cursor-based pagination
 - **Media Upload:** Attach images/videos to tweets via v1.1 media upload
@@ -112,7 +112,7 @@ X (Twitter) MCP — Auth check
 
 ---
 
-## Available Tools (27 Total)
+## Available Tools (24 Total)
 
 ### Read Operations
 
@@ -138,8 +138,6 @@ X (Twitter) MCP — Auth check
   - `username`, `max_results` (default 20), `pagination_token`
 - **`x_get_liked_tweets`** — Get tweets liked by a user (5-100 per page)
   - `username` (optional, defaults to authenticated user), `max_results`, `pagination_token`
-- **`x_get_bookmarks`** — Get bookmarked tweets (requires OAuth 1.0a)
-  - `max_results` (1-100, default 20), `pagination_token`
 - **`x_get_owned_lists`** — Get lists owned by a user
   - `username` (optional, defaults to authenticated user)
 - **`x_get_list_tweets`** — Get tweets from an X List (1-100 per page)
@@ -159,9 +157,6 @@ X (Twitter) MCP — Auth check
   - `tweet_id`
 - **`x_follow_user`** / **`x_unfollow_user`** — Follow or unfollow by username
   - `username`
-- **`x_bookmark_tweet`** / **`x_remove_bookmark`** — Bookmark or unbookmark a tweet
-  - `tweet_id`
-
 ### DM Operations (require OAuth 1.0a)
 
 - **`x_send_dm`** — Send a direct message
@@ -278,7 +273,6 @@ uv run x-mcp --transport sse
 - "Post a thread about the benefits of open source"
 - "Who are my most recent followers?"
 - "Send a DM to @friend saying 'Hey, let's catch up!'"
-- "Bookmark this interesting tweet for later"
 - "Show me my home timeline"
 
 ---

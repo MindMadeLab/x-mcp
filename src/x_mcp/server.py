@@ -233,7 +233,12 @@ def _read_with_fallback(xctx: XContext, operation):
     for client in clients:
         try:
             return operation(client)
-        except (tweepy.errors.Unauthorized, tweepy.errors.Forbidden) as e:
+        except (
+            tweepy.errors.Unauthorized,
+            tweepy.errors.Forbidden,
+            TypeError,
+            ValueError,
+        ) as e:
             last_err = e
             continue
     raise last_err  # type: ignore[misc]
@@ -782,7 +787,7 @@ def x_unretweet(ctx: Context, tweet_id: str) -> dict:
         client = _write_client(xctx)
         if not xctx.authenticated_user_id:
             return {"error": "Could not determine authenticated user ID."}
-        resp = client.unretweet(xctx.authenticated_user_id, tweet_id)
+        resp = client.unretweet(tweet_id)
         if resp and resp.data and not resp.data.get("retweeted"):
             return {"success": True, "tweet_id": tweet_id}
         return {"success": False, "tweet_id": tweet_id}
@@ -930,91 +935,6 @@ def x_get_following(
         following = [_user_to_dict(u) for u in (resp.data or [])]
 
         result: dict = {"following": following, "count": len(following)}
-        if resp.meta and "next_token" in resp.meta:
-            result["next_token"] = resp.meta["next_token"]
-        return result
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@mcp.tool()
-def x_bookmark_tweet(ctx: Context, tweet_id: str) -> dict:
-    """Bookmark a tweet.
-
-    Requires OAuth 1.0a user-context authentication.
-
-    Args:
-        tweet_id: The numeric tweet ID to bookmark.
-    """
-    try:
-        xctx = _get_ctx(ctx)
-        client = _write_client(xctx)
-        resp = client.bookmark(tweet_id)
-        if resp and resp.data and resp.data.get("bookmarked"):
-            return {"success": True, "tweet_id": tweet_id}
-        return {"success": False, "tweet_id": tweet_id}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@mcp.tool()
-def x_remove_bookmark(ctx: Context, tweet_id: str) -> dict:
-    """Remove a bookmark from a tweet.
-
-    Requires OAuth 1.0a user-context authentication.
-
-    Args:
-        tweet_id: The numeric tweet ID to un-bookmark.
-    """
-    try:
-        xctx = _get_ctx(ctx)
-        client = _write_client(xctx)
-        resp = client.remove_bookmark(tweet_id)
-        if resp and resp.data and not resp.data.get("bookmarked"):
-            return {"success": True, "tweet_id": tweet_id}
-        return {"success": False, "tweet_id": tweet_id}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@mcp.tool()
-def x_get_bookmarks(
-    ctx: Context,
-    max_results: int = 20,
-    pagination_token: str | None = None,
-) -> dict:
-    """Get the authenticated user's bookmarked tweets.
-
-    Requires OAuth 1.0a user-context authentication.
-
-    Args:
-        max_results: Number of bookmarks to return (1-100, default 20).
-        pagination_token: Token for paginating through results.
-
-    Returns a list of bookmarked tweets.
-    """
-    try:
-        xctx = _get_ctx(ctx)
-        client = _write_client(xctx)
-        max_results = max(1, min(100, max_results))
-
-        kwargs: dict = {
-            "tweet_fields": _TWEET_FIELDS,
-            "user_fields": _USER_FIELDS,
-            "expansions": _EXPANSIONS,
-            "max_results": max_results,
-        }
-        if pagination_token:
-            kwargs["pagination_token"] = pagination_token
-
-        resp = client.get_bookmarks(**kwargs)
-        tweets = [_tweet_to_dict(t) for t in (resp.data or [])]
-        users = _includes_users(resp)
-        for t in tweets:
-            if t.get("author_id") and t["author_id"] in users:
-                t["author"] = users[t["author_id"]]
-
-        result: dict = {"tweets": tweets, "count": len(tweets)}
         if resp.meta and "next_token" in resp.meta:
             result["next_token"] = resp.meta["next_token"]
         return result
