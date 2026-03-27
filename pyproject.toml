@@ -1,0 +1,23 @@
+[project]
+name = "x-mcp"
+version = "0.1.0"
+description = "MCP server for X (Twitter) API — post, search, like, retweet, follow, and read tweets"
+readme = "README.md"
+authors = [
+    { name = "MindMade", email = "info@mindmade.ai" },
+]
+requires-python = ">=3.11"
+license = "MIT"
+
+dependencies = [
+    "mcp[cli]>=1.8.0",
+    "tweepy>=4.14.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+x-mcp = "x_mcp:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
