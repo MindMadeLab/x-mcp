@@ -18,6 +18,11 @@ dependencies = [
 [project.scripts]
 x-mcp = "x_mcp:main"
 
+[project.urls]
+Homepage = "https://github.com/MindMadeLab/x-mcp"
+Repository = "https://github.com/MindMadeLab/x-mcp"
+Issues = "https://github.com/MindMadeLab/x-mcp/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
