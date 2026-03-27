@@ -1,6 +1,6 @@
 [project]
 name = "mcp-x"
-version = "0.1.2"
+version = "0.1.3"
 description = "MCP server for X (Twitter) API — post, search, like, retweet, follow, and read tweets"
 readme = "README.md"
 authors = [
@@ -22,6 +22,9 @@ x-mcp = "x_mcp:main"
 Homepage = "https://github.com/MindMadeLab/x-mcp"
 Repository = "https://github.com/MindMadeLab/x-mcp"
 Issues = "https://github.com/MindMadeLab/x-mcp/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/x_mcp"]
 
 [build-system]
 requires = ["hatchling"]
